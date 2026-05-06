@@ -27,7 +27,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE(PLUGIN_NAME, "en-US")
 
-char *playing = "No fullscreen app detected";
+char playing[256] = "No fullscreen app detected";
 char *game_list[] = {
 	"a",
 	"s"
@@ -60,7 +60,11 @@ static void on_recording_stop(void *data, calldata_t *cd)
 void get_fullscreen_app_name(char *name_buffer, DWORD buffer_size)
 {
 	HWND hwnd = GetForegroundWindow();
-    if (!hwnd) return;
+    if (!hwnd) {
+    	strncpy(name_buffer, "No fullscreen app detected", buffer_size - 1);
+		name_buffer[buffer_size - 1] = '\0';
+    	return;
+	}	
 
 	RECT window_rect;
 	GetWindowRect(hwnd, &window_rect);
@@ -75,18 +79,27 @@ void get_fullscreen_app_name(char *name_buffer, DWORD buffer_size)
 		HANDLE process_handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, process_id);
 
 		if (process_handle) {
-			GetModuleBaseNameA(process_handle, NULL, name_buffer, buffer_size);
-			CloseHandle(process_handle);
+    		if (GetModuleBaseNameA(process_handle, NULL, name_buffer, buffer_size) == 0) {
+				obs_log(LOG_ERROR, "Failed to get module base name: %lu", GetLastError());
+        		strncpy(name_buffer, "Unknown", buffer_size - 1);
+        		name_buffer[buffer_size - 1] = '\0';
+			}
+    	CloseHandle(process_handle);
+		} else {
+    		strncpy(name_buffer, "OpenProcess failed", buffer_size - 1);
+    		name_buffer[buffer_size - 1] = '\0';
 		}
 	}
 	else {
-		strncpy(name_buffer, "No fullscreen app detected", buffer_size);
+		strncpy(name_buffer, "No fullscreen app detected", buffer_size - 1);
+		name_buffer[buffer_size - 1] = '\0';
 	}
 }
 static void on_recording_start(void *data, calldata_t *cd)
 {
-	obs_log(LOG_INFO, "recording started");
 
+	obs_log(LOG_INFO, "recording started");
+	get_fullscreen_app_name(playing, 256);
 	if (strcmp(playing, "No fullscreen app detected") == 0) {
 
 	} else if(contains(playing, game_list, size)) {
@@ -94,7 +107,7 @@ static void on_recording_start(void *data, calldata_t *cd)
 	}
 	obs_output_t *output = obs_get_output_by_name("adv_file_output");
     if (!output) output = obs_get_output_by_name("simple_file_output");
-
+	obs_log(LOG_INFO, "method called, PNAMELEN: %s", playing);
 	if (output) {
 		obs_data_t *settings = obs_output_get_settings(output);
 		obs_log(LOG_INFO, "output found: %s", obs_data_get_json(obs_output_get_settings(output)));
